@@ -1,0 +1,19 @@
+# EEG_Test.sub
+#
+universe = vanilla
+log = Logs/$(eegfile)_$(Cluster).log
+error = Logs/$(eegfile)_$(Cluster)_$(Process).err
+
+executable = run_HAPPE.sh
+arguments = v94 $(eegfile)
+output = Output/$(eegfile)_$(Cluster)_$(Process).out
+
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+transfer_input_files = Input/$(eegfile).set,Input/$(eegfile).fdt,RunHAPPE,chanlocs_prop256.sfp,http://proxy.chtc.wisc.edu/SQUID/r2018a.tar.gz
+transfer_output_remaps = "$(eegfile)_wavclean.mat=Processed/$(eegfile)_wavclean.mat;$(eegfile)_prewav.mat=Processed/$(eegfile)_prewav.mat;$(eegfile)_ICA.set=Processed/$(eegfile)_ICA.set;$(eegfile)_ICA.fdt=Processed/$(eegfile)_ICA.fdt;$(eegfile)_ICAcleanedwithMARA.set=Processed/$(eegfile)_ICAcleanedwithMARA.set;$(eegfile)_ICAcleanedwithMARA.fdt=Processed/$(eegfile)_ICAcleanedwithMARA.fdt;$(eegfile)_segmented.set=Processed/$(eegfile)_segmented.set;$(eegfile)_segmented.fdt=Processed/$(eegfile)_segmented.fdt;$(eegfile)_segments_interp.set=Processed/$(eegfile)_segments_interp.set;$(eegfile)_segments_interp.fdt=Processed/$(eegfile)_segments_interp.fdt;$(eegfile)_segments_postreject.set=Processed/$(eegfile)_segments_postreject.set;$(eegfile)_segments_postreject.fdt=Processed/$(eegfile)_segments_postreject.fdt;$(eegfile)_processed.set=Processed/$(eegfile)_processed.set;$(eegfile)_processed.fdt=Processed/$(eegfile)_processed.fdt;$(eegfile)_HAPPE_output_table.csv=Processed/$(eegfile)_HAPPE_output_table_$(Cluster).csv"
+request_cpus = 4
+request_memory = 4GB
+request_disk = 10GB
+
+queue eegfile from eeg_file_list.txt

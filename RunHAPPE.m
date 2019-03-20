@@ -136,9 +136,14 @@ average_rereference = 1;
 %save_as_format = 3 will save the processed data as a .set file (EEGlab format)
 save_as_format = 3;
 
+%Run wICA?
+% Yes = 1
+% No = 0
+run_wICA = 1;
+
 %Save all intermediate files?
 % Yes = 1
-% No = 2. Only saves final processed file.
+% No = 0. Only saves final processed file.
 save_all = 1;
 
 %If parameter file is given, read in parameters
@@ -297,39 +302,39 @@ Number_Segments_Post_Segment_Rejection=[];
     %% run wavelet-ICA (ICA first for clustering the data, then wavelet thresholding on the ICs)
     %uses a soft, global threshold for the wavelets, wavelet family is coiflet (level 5), threshold multiplier .75 to remove more high frequency noise
     %for details, see wICA.m function
-    
-    try 
-        if pipeline_visualizations_semiautomated == 0
-            [wIC, A, W, IC] = wICA(EEG,'runica', 1, 0, [], 5);
-        elseif pipeline_visualizations_semiautomated == 1
-            [wIC, A, W, IC] = wICA(EEG,'runica', 1, 1, srate, 5);
+    if run_wICA
+        try 
+            if pipeline_visualizations_semiautomated == 0
+                [wIC, A, W, IC] = wICA(EEG,'runica', 1, 0, [], 5);
+            elseif pipeline_visualizations_semiautomated == 1
+                [wIC, A, W, IC] = wICA(EEG,'runica', 1, 1, srate, 5);
+            end
+        catch wica_err
+            if strcmp ('Output argument "wIC" (and maybe others) not assigned during call to "wICA".',wica_err.message)
+                error('Error during wICA, most likely due to memory settings. Please confirm your EEGLAB memory settings are set according to the description in the HAPPE ReadMe')
+            else
+                rethrow(wica_err)
+            end
         end
-    catch wica_err
-        if strcmp ('Output argument "wIC" (and maybe others) not assigned during call to "wICA".',wica_err.message)
-            error('Error during wICA, most likely due to memory settings. Please confirm your EEGLAB memory settings are set according to the description in the HAPPE ReadMe')
-        else
-            rethrow(wica_err)
-        end
+
+        %reconstruct artifact signal as channelsxsamples format from the wavelet coefficients
+        artifacts = A*wIC;
+
+        %reshape EEG signal from EEGlab format to channelsxsamples format
+        EEG2D=reshape(EEG.data, size(EEG.data,1), []);
+
+        %subtract out wavelet artifact signal from EEG signal
+        wavcleanEEG=EEG2D-artifacts;
+
+        %save wavelet cleaned EEG data file to folder with extension _wavclean.mat    
+        save([fname,'_wavclean.mat'],'wavcleanEEG')
+        save([fname,'_prewav.mat'],'EEG2D')
+
+        %% reimport into EEGlab
+        EEG = pop_importdata('dataformat','matlab','nbchan',0,'data',[fname,'_wavclean.mat'],'srate',srate,'pnts',0,'xmin',0,'chanlocs',selected_channel_locations);
+        EEG.setname='wavcleanedEEG';
+        EEG = eeg_checkset( EEG );
     end
-        
-    %reconstruct artifact signal as channelsxsamples format from the wavelet coefficients
-    artifacts = A*wIC;
-    
-    %reshape EEG signal from EEGlab format to channelsxsamples format
-    EEG2D=reshape(EEG.data, size(EEG.data,1), []);
-    
-    %subtract out wavelet artifact signal from EEG signal
-    wavcleanEEG=EEG2D-artifacts;
-    
-    %save wavelet cleaned EEG data file to folder with extension _wavclean.mat    
-    save([fname,'_wavclean.mat'],'wavcleanEEG')
-    save([fname,'_prewav.mat'],'EEG2D')
-    
-    %% reimport into EEGlab
-    EEG = pop_importdata('dataformat','matlab','nbchan',0,'data',[fname,'_wavclean.mat'],'srate',srate,'pnts',0,'xmin',0,'chanlocs',selected_channel_locations);
-    EEG.setname='wavcleanedEEG';
-    EEG = eeg_checkset( EEG );
-    
     
     %% run ICA to evaluate components this time
     [laplaceEst, ~, ~] = epi_latent_dims(EEG.data);
@@ -421,21 +426,19 @@ Number_Segments_Post_Segment_Rejection=[];
     end
     
     %% rejection of bad segments using amplitude-based and joint probability artifact detection
-%     if ROI_channels_only == 0
-        EEG = pop_eegthresh(EEG,1,[1:EEG.nbchan] ,[reject_min_amp],[reject_max_amp],[EEG.xmin],[EEG.xmax],2,0);
+
+    if segment_rejection
+        EEG = pop_eegthresh(EEG,1,[1:EEG.nbchan],[reject_min_amp],[reject_max_amp],[EEG.xmin],[EEG.xmax],2,0);
         EEG = pop_jointprob(EEG,1,[1:EEG.nbchan],3,3,pipeline_visualizations_semiautomated,...
             0,pipeline_visualizations_semiautomated,[],pipeline_visualizations_semiautomated);
-%     else
-%         EEG = pop_eegthresh(EEG,1,[ROI_indices_in_selected_chanlocs]',[reject_min_amp],[reject_max_amp],[EEG.xmin],[EEG.xmax],2,0);
-%         EEG = pop_jointprob(EEG,1,[ROI_indices_in_selected_chanlocs]',3,3,pipeline_visualizations_semiautomated,...
-%             0,pipeline_visualizations_semiautomated,[],pipeline_visualizations_semiautomated);
-%     end
 
-    EEG = eeg_rejsuperpose(EEG, 1, 0, 1, 1, 1, 1, 1, 1);
-    EEG = pop_rejepoch(EEG, [EEG.reject.rejglobal] ,0);
-    EEG = eeg_checkset(EEG );
-    if save_all
-    EEG = pop_saveset(EEG, 'filename',[fname,'_segments_postreject.set'],'filepath',src_folder_name);
+
+        EEG = eeg_rejsuperpose(EEG, 1, 0, 1, 1, 1, 1, 1, 1);
+        EEG = pop_rejepoch(EEG, [EEG.reject.rejglobal] ,0);
+        EEG = eeg_checkset(EEG );
+        if save_all
+        EEG = pop_saveset(EEG, 'filename',[fname,'_segments_postreject.set'],'filepath',src_folder_name);
+        end
     end
     
     %% interpolate the channels that were flagged as bad earlier:
